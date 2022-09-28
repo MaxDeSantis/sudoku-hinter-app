@@ -101,6 +101,14 @@ impl SudokuGrid {
         }
         println!(" -------------------------");
     }
+
+    fn get_possible_values(self: &mut Self) -> Vec<Vec<i32>> {
+        let mut possible_vals: Vec<Vec<i32>> = vec![Vec::new(); 81];
+
+
+
+        return possible_vals;
+    }
 }
 
 fn import_values_from_file(file_path: &String, grid: &mut SudokuGrid) {
@@ -159,21 +167,21 @@ fn get_all_possible_values(grid: &mut SudokuGrid) -> Vec<Vec<i32>> {
 
     // Computes what values can be where
     for i in 0..81 {
-        //print!("{}th row, {}th col: ", i / 9, i % 9);
+        print!("{}th row, {}th col: ", i / 9, i % 9);
         let r =  (i / 9).try_into().unwrap();
         let c =  (i % 9).try_into().unwrap();
 
         if grid.get_grid_value(r, c) > 0 {
-            possible_values[i] = vec![-1;1];
+            possible_values[i] = Vec::new();
         }
         else {
             possible_values[i] = get_cell_possible_values(grid, r, c);
         }
         
-        // for n in &possible_values[i] {
-        //     print!("{} ", n);
-        // }
-        //println!();
+        for n in &possible_values[i] {
+            print!("{} ", n);
+        }
+        println!();
     }
 
 
@@ -186,22 +194,150 @@ fn solve_sudoku_grid(grid: &mut SudokuGrid) -> &mut SudokuGrid {
     let mut latest_vals: Vec<Vec<i32>> = vec![vec![0; 9]; 81];
 
     while !grid.is_solved() {
+        println!("------");
         latest_vals = get_all_possible_values(grid);
-
+        let mut value_found = false;
         for (i, vec_values) in latest_vals.iter().enumerate() {
+
+            // Check if single value is in vector - only one possible value
             if vec_values.len() == 1 && vec_values[0] != -1 {
                 let r = (i / 9).try_into().unwrap();
                 let c = (i % 9).try_into().unwrap();
 
                 grid.set_grid_value(r, c, vec_values[0]);
+                value_found = true;
             }
+        }
+        if !value_found {
+            println!("Unable to make further progress");
+            break;
         }
     }
     return  grid
 }
 
+fn get_row_col(index: i32) -> (i32, i32) {
+    let r = (index / 9).try_into().unwrap();
+    let c = (index % 9).try_into().unwrap();
 
-use std::fs;
+    return (r, c)
+}
+
+fn remove_val_from_houses(value_list: &mut Vec<Vec<i32>>, row:i32, col:i32, value:i32) {
+
+    let width:i32 = 9;
+    let height:i32 = 9;
+
+
+    // row house
+    for c in 0..width {
+        let index = 9*row + c;
+
+        let vector: Option<&mut Vec<i32>> = value_list.get_mut(index as usize);
+
+        match vector {
+            Some(vector) => {
+                if vector.contains(&value) {
+                    let i = vector.iter().position(|x| *x == value).unwrap();
+                    vector.swap_remove(i);
+                }
+            },
+            None => println!("Something went wrong getting vector")
+        }
+    }
+
+    // col house
+    for r in 0..height {
+        let index = 9*r + col;
+
+        let vector: Option<&mut Vec<i32>> = value_list.get_mut(index as usize);
+        match vector {
+            Some(vector) => {
+                if vector.contains(&value) {
+                    let i = vector.iter().position(|x| *x == value).unwrap();
+                    vector.remove(i);
+                }
+            },
+            None => println!("Something went wrong getting vector")
+        }
+    }
+
+    // square house
+    let left_lim = 3 * (col / 3);
+    let right_lim = left_lim + 3;
+    let upper_lim = 3 * (row / 3);
+    let lower_lim = upper_lim + 3;
+
+    for r in upper_lim..lower_lim {
+        for c in left_lim..right_lim {
+            let index = r * width + c;
+            let vector: Option<&mut Vec<i32>> = value_list.get_mut(index as usize);
+            match vector {
+                Some(vector) => {
+                    if vector.contains(&value) {
+                        let i = vector.iter().position(|x| *x == value).unwrap();
+                        vector.remove(i);
+                    }
+                },
+                None => println!("Something went wrong getting vector")
+            }
+        }
+    }
+}
+
+fn solve_grid(grid: &mut SudokuGrid) -> &mut SudokuGrid {
+
+    // 1. Determine all possible values. 
+    let mut possible_vals: Vec<Vec<i32>> = get_all_possible_values(grid);
+
+    for i in &possible_vals {
+        for j in i {
+            print!(" {}", j);
+        }
+        println!();
+    }
+
+    // 2. Check for lone values
+    let mut searching:bool = true;
+
+    let mut none_empty:bool = true;
+
+    let mut vals_to_update: Vec<(i32, i32, i32)> = Vec::new();
+
+    while (searching) {
+        for (i, cell_values) in possible_vals.iter().enumerate() {
+            // ? Are there any lone values in the cell?
+            if cell_values.len() == 1 {
+                println!("Found len 1");
+                // YES - Place the lone value in the cell
+                let (r, c) = get_row_col(i.try_into().unwrap());
+                grid.set_grid_value(r, c, cell_values[0]);
+    
+                // Update grid possibilities
+                vals_to_update.push((r, c, cell_values[0]));
+
+                none_empty = false;
+            }
+        }
+
+        for updated_cells in &vals_to_update {
+            println!("removing {} from {},{}", updated_cells.2, updated_cells.0, updated_cells.1);
+            remove_val_from_houses(&mut possible_vals, updated_cells.0, updated_cells.1, updated_cells.2);
+
+        }
+
+        if none_empty {
+            println!("Set searching false");
+            searching = false;
+        }
+        
+    }
+    
+    return grid;
+}
+
+
+use std::{fs, cell};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -215,7 +351,7 @@ fn main() {
         return;
     }
 
-    let solved_grid = solve_sudoku_grid(&mut main_grid);
+    let solved_grid = solve_grid(&mut main_grid);
 
     solved_grid.print_grid();
 }
